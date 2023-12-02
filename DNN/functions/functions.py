@@ -1,4 +1,10 @@
-import numpy as np
+import cupy as cp
+
+def sigmoid(z, a=None, derivative=False):
+	if derivative:
+		return a * (1 - a)
+	else:
+		return 1.0 / (1 + cp.exp(-z.clip(-88.72283, 88.72283)))
 
 def relu(z, a=None, derivative=False):
 	if derivative:
@@ -7,7 +13,7 @@ def relu(z, a=None, derivative=False):
 		# z[z<0]=0
 		# return z
 		# return z*(z>0)
-		return np.maximum(0, z)
+		return cp.maximum(0, z)
 
 
 def softmax(z, a=None, derivative=False):
@@ -15,16 +21,16 @@ def softmax(z, a=None, derivative=False):
 		# a1*(1-a1)-a1a2
 		return 1
 	else:
-		exps = np.exp(z - np.max(z, axis=1, keepdims=True))
+		exps = cp.exp(z - cp.max(z, axis=1, keepdims=True))
 		# return exps/cp.sum(exps, axis=1, keepdims = True)
-		exps /= np.sum(exps, axis=1, keepdims=True)
+		exps /= cp.sum(exps, axis=1, keepdims=True)
 		return exps
 
 
 def cross_entropy(outputs, labels, epsilon=1e-12):
 	labels = labels.clip(epsilon, 1 - epsilon)
 	outputs = outputs.clip(epsilon, 1 - epsilon)
-	return -labels * np.log(outputs) - (1 - labels) * np.log(1 - outputs)
+	return -labels * cp.log(outputs) - (1 - labels) * cp.log(1 - outputs)
 
 
 def del_cross_soft(outputs, labels):
