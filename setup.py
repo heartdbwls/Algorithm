@@ -4,7 +4,7 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setup(
-    name="dnn_from_scratch",
+    name="dnn",
     version="0.1.dev1",
     author="heartdbwls",
     description="module for DNN",
