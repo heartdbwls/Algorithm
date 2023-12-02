@@ -1,7 +1,6 @@
 from . import layers
-from functions import *
+from .functions import *
 from .optimizers import *
-from .stream_handler import stream_maps
 from .layers import Layer
 
 import pickle
@@ -80,45 +79,40 @@ class Sequential(Layer):
 			print("EPOCH:", epch + 1, "/", epochs)
 			if iterator is None:
 				if shuffle:
-					s = np.random.permutation(lnxinp).astype(cp.int32, copy=False)
+					s = np.random.permutation(lnxinp).astype(np.int32, copy=False)
 					X_inp = X_inp[s]
 					labels = labels[s]
 					del s
 			start = time.time()
 			idx = 0
-			eval_stream = stream_maps.get_next_stream()
 			while idx < lnxinp:
 				smtst = time.time()
 				if iterator is not None:
 					inp, y_inp = iterator.next()
-					inp = cp.asarray(inp)
-					y_inp = cp.asarray(y_inp)
+					inp = np.asarray(inp)
+					y_inp = np.asarray(y_inp)
 				else:
-					inp = cp.asarray(X_inp[idx:idx + batch_size])
-					y_inp = cp.asarray(labels[idx:idx + batch_size])
+					inp = np.asarray(X_inp[idx:idx + batch_size])
+					y_inp = np.asarray(labels[idx:idx + batch_size])
 				idx += inp.shape[0]
 				outputs = self.train_on_batch(inp, y_inp)
-				self.logit_event = cp.cuda.get_current_stream().record()
-				with eval_stream:
-					eval_stream.wait_event(self.logit_event)
-					if accuracy_metric:
-						if self.loss == cross_entropy or self.loss == mean_squared_error:
-							ans = outputs.argmax(axis=1)
-							cor = y_inp.argmax(axis=1)
-						else:
-							ans = outputs
-							cor = y_inp
-						nacc = (ans == cor).mean().get(eval_stream)
-						acc = info_beta * nacc + (1 - info_beta) * acc
-					sample_loss = self.loss(outputs=outputs, labels=y_inp).mean().get(eval_stream) / 10
-					loss = info_beta * sample_loss + (1 - info_beta) * loss
-					samtm = time.time() - smtst
-					sam_time = info_beta * samtm + (1 - info_beta) * sam_time
-					rem_sam = (lnxinp - idx) / batch_size
-					eta = int(rem_sam * sam_time)
-					print(
-							f"\rProgress: {str(idx):>6} / {lnxinp}  - {eta}s - {sam_time:.3f}s/sample - loss: {sample_loss:.4f} - accuracy: {acc:.4f}",
-							end=" -  _")
+				if accuracy_metric:
+					if self.loss == cross_entropy or self.loss == mean_squared_error:
+						ans = outputs.argmax(axis=1)
+						cor = y_inp.argmax(axis=1)
+					else:
+						ans = outputs
+						cor = y_inp
+					acc = info_beta * nacc + (1 - info_beta) * acc
+				sample_loss = self.loss(outputs=outputs, labels=y_inp).mean() / 10
+				loss = info_beta * sample_loss + (1 - info_beta) * loss
+				samtm = time.time() - smtst
+				sam_time = info_beta * samtm + (1 - info_beta) * sam_time
+				rem_sam = (lnxinp - idx) / batch_size
+				eta = int(rem_sam * sam_time)
+				print(
+						f"\rProgress: {str(idx):>6} / {lnxinp}  - {eta}s - {sam_time:.3f}s/sample - loss: {sample_loss:.4f} - accuracy: {acc:.4f}",
+						end=" -  _")
 			end = time.time()
 			print(f"\b\bTime: {end - start:.3f}s")
 			if accuracy_metric:
@@ -136,8 +130,8 @@ class Sequential(Layer):
 		print("Calculating Validation Accuracy....", end="")
 		start = time.time()
 		while vidx < lnvx:
-			inp = cp.asarray(VX[vidx:vidx + batch_size])
-			y_inp = cp.asarray(VY[vidx:vidx + batch_size])
+			inp = np.asarray(VX[vidx:vidx + batch_size])
+			y_inp = np.asarray(VY[vidx:vidx + batch_size])
 			vidx += inp.shape[0]
 			outputs = self.predict(inp)
 			if self.loss == cross_entropy or self.loss == mean_squared_error:
