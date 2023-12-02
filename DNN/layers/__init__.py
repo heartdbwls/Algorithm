@@ -5,3 +5,5 @@ from .BatchNormalization import BatchNormalization
 from .dense import Dense
 from .dropout import Dropout
 from .shaping import Flatten
+
+import cupyx
