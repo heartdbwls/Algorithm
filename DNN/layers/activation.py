@@ -1,5 +1,4 @@
 from .base_layer import *
-from .functions import *
 
 class Activation(Layer):
     def __init__(
