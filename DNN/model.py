@@ -103,6 +103,7 @@ class Sequential(Layer):
 					else:
 						ans = outputs
 						cor = y_inp
+					nacc = (ans == cor).mean()
 					acc = info_beta * nacc + (1 - info_beta) * acc
 				sample_loss = self.loss(outputs=outputs, labels=y_inp).mean() / 10
 				loss = info_beta * sample_loss + (1 - info_beta) * loss
