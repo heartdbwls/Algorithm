@@ -6,5 +6,3 @@ from .dense import Dense
 from .dropout import Dropout
 from .shaping import Flatten
 from .shaping import Reshape
-
-import cupyx
