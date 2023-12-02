@@ -1,0 +1,10 @@
+__pycache__/
+.ipynb_checkpoints/
+*.dump
+*.nvvp
+mntest*
+.vscode
+.idea
+build
+dist
+*.egg-info/
