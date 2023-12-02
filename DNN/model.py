@@ -1,12 +1,12 @@
 from . import layers
 from .functions import *
 from .optimizers import *
+from .stream_handler import stream_maps
 from .layers import Layer
 
 import pickle
 from gc import collect
 import time
-import numpy as np
 
 class Sequential(Layer):
 	def __init__(self):
@@ -79,41 +79,45 @@ class Sequential(Layer):
 			print("EPOCH:", epch + 1, "/", epochs)
 			if iterator is None:
 				if shuffle:
-					s = np.random.permutation(lnxinp).astype(np.int32, copy=False)
+					s = cp.random.permutation(lnxinp).astype(cp.int32, copy=False)
 					X_inp = X_inp[s]
 					labels = labels[s]
 					del s
 			start = time.time()
 			idx = 0
+			eval_stream = stream_maps.get_next_stream()
 			while idx < lnxinp:
 				smtst = time.time()
 				if iterator is not None:
 					inp, y_inp = iterator.next()
-					inp = np.asarray(inp)
-					y_inp = np.asarray(y_inp)
+					inp = cp.asarray(inp)
+					y_inp = cp.asarray(y_inp)
 				else:
-					inp = np.asarray(X_inp[idx:idx + batch_size])
-					y_inp = np.asarray(labels[idx:idx + batch_size])
+					inp = cp.asarray(X_inp[idx:idx + batch_size])
+					y_inp = cp.asarray(labels[idx:idx + batch_size])
 				idx += inp.shape[0]
 				outputs = self.train_on_batch(inp, y_inp)
-				if accuracy_metric:
-					if self.loss == cross_entropy or self.loss == mean_squared_error:
-						ans = outputs.argmax(axis=1)
-						cor = y_inp.argmax(axis=1)
-					else:
-						ans = outputs
-						cor = y_inp
-					nacc = (ans == cor).mean()
-					acc = info_beta * nacc + (1 - info_beta) * acc
-				sample_loss = self.loss(outputs=outputs, labels=y_inp).mean() / 10
-				loss = info_beta * sample_loss + (1 - info_beta) * loss
-				samtm = time.time() - smtst
-				sam_time = info_beta * samtm + (1 - info_beta) * sam_time
-				rem_sam = (lnxinp - idx) / batch_size
-				eta = int(rem_sam * sam_time)
-				print(
-						f"\rProgress: {str(idx):>6} / {lnxinp}  - {eta}s - {sam_time:.3f}s/sample - loss: {sample_loss:.4f} - accuracy: {acc:.4f}",
-						end=" -  _")
+				self.logit_event = cp.cuda.get_current_stream().record()
+				with eval_stream:
+					eval_stream.wait_event(self.logit_event)
+					if accuracy_metric:
+						if self.loss == cross_entropy or self.loss == mean_squared_error:
+							ans = outputs.argmax(axis=1)
+							cor = y_inp.argmax(axis=1)
+						else:
+							ans = outputs
+							cor = y_inp
+						nacc = (ans == cor).mean().get(eval_stream)
+						acc = info_beta * nacc + (1 - info_beta) * acc
+					sample_loss = self.loss(outputs=outputs, labels=y_inp).mean().get(eval_stream) / 10
+					loss = info_beta * sample_loss + (1 - info_beta) * loss
+					samtm = time.time() - smtst
+					sam_time = info_beta * samtm + (1 - info_beta) * sam_time
+					rem_sam = (lnxinp - idx) / batch_size
+					eta = int(rem_sam * sam_time)
+					print(
+							f"\rProgress: {str(idx):>6} / {lnxinp}  - {eta}s - {sam_time:.3f}s/sample - loss: {sample_loss:.4f} - accuracy: {acc:.4f}",
+							end=" -  _")
 			end = time.time()
 			print(f"\b\bTime: {end - start:.3f}s")
 			if accuracy_metric:
@@ -131,8 +135,8 @@ class Sequential(Layer):
 		print("Calculating Validation Accuracy....", end="")
 		start = time.time()
 		while vidx < lnvx:
-			inp = np.asarray(VX[vidx:vidx + batch_size])
-			y_inp = np.asarray(VY[vidx:vidx + batch_size])
+			inp = cp.asarray(VX[vidx:vidx + batch_size])
+			y_inp = cp.asarray(VY[vidx:vidx + batch_size])
 			vidx += inp.shape[0]
 			outputs = self.predict(inp)
 			if self.loss == cross_entropy or self.loss == mean_squared_error:
@@ -157,20 +161,6 @@ class Sequential(Layer):
 				else:
 					sv_me.append((obj.weights, obj.biases))  # ,obj.w_m,obj.w_v,obj.b_m,obj.b_v))
 		return sv_me
-
-	@weights.setter
-	def weights(self, sv_me):
-		idx = 0
-		for obj in self.sequence:
-			if obj.param > 0:
-				if isinstance(obj, layers.BatchNormalization):
-					obj.kernels, obj.biases, obj.moving_mean, obj.moving_var = sv_me[idx]
-				else:
-					obj.kernels, obj.biases = sv_me[idx]
-					if isinstance(obj, layers.Conv2D):  # TODO - Verify isinstance works.
-						obj.init_back()
-				obj.weights = obj.kernels
-				idx += 1
 
 	def save_weights(self, path):  # TODO - make a proper saving mechanism.
 		sv_me = self.weights
@@ -206,6 +196,9 @@ class Sequential(Layer):
 			if obj.__class__ == layers.BatchNormalization:
 				self.non_train_param += obj.param // 2
 		print('=' * reps)
+		print("Total Params: {:,}".format(self.total_param))
+		print("Trainable Params: {:,}".format(self.total_param - self.non_train_param))
+		print("Non-trainable Params: {:,}".format(self.non_train_param))
 		print("Total Params: {:,}".format(self.total_param))
 		print("Trainable Params: {:,}".format(self.total_param - self.non_train_param))
 		print("Non-trainable Params: {:,}".format(self.non_train_param))
